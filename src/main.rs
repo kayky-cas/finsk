@@ -79,9 +79,10 @@ pub fn main() {
                     }
                 }
                 Some(raylib::consts::KeyboardKey::KEY_UP) => {
-                    selected_program = selected_program.wrapping_sub(1);
-                    if selected_program >= current_programs.len() {
-                        selected_program = current_programs.len() - 1;
+                    if selected_program == 0 {
+                        selected_program = current_programs.len().min(programs_max) - 1;
+                    } else {
+                        selected_program -= 1;
                     }
                 }
                 Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
