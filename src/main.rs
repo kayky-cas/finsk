@@ -13,28 +13,31 @@ pub fn main() {
         .stdout;
 
     let bindings = String::from_utf8(output).unwrap();
-    let programs: HashSet<&str> = bindings.lines().collect();
-    let programs: Vec<&str> = programs.into_iter().collect();
+
+    let programs: Vec<&str> = bindings
+        .lines()
+        .collect::<HashSet<&str>>()
+        .into_iter()
+        .collect();
 
     let mut current_programs = programs.clone();
 
-    // Including the font to the binary
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .vsync()
         .title("Finsk")
         .build();
 
-    let mut search_bar = String::from("");
+    let mut search_bar = String::new();
 
     let mut selected_program = 0;
 
     let programs_max = ((WINDOW_HEIGHT / FONT_SIZE) - 2) as usize;
 
     #[cfg(debug_assertions)]
-    let fps_x = 550 - FONT_SIZE * 2;
+    let fps_x = WINDOW_WIDTH - 50 - FONT_SIZE * 2;
     #[cfg(debug_assertions)]
-    let fps_y = 800 - FONT_SIZE * 2;
+    let fps_y = WINDOW_HEIGHT - FONT_SIZE * 2;
 
     let mut programs_current_showing = current_programs.len().min(programs_max);
 
