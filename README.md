@@ -4,8 +4,7 @@
 ```bash
 git clone https://github.com/kayky-cas/finsk.git
 cd ./finsk
-cargo build --release # or just "cargo build" if you want debug information
-mv ./target/release/finsk /usr/bin
+make install
 ```
 
 ## TODO

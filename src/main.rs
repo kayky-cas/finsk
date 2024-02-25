@@ -18,8 +18,10 @@ pub fn main() {
 
     let mut current_programs = programs.clone();
 
+    // Including the font to the binary
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .vsync()
         .title("Finsk")
         .build();
 
@@ -27,68 +29,56 @@ pub fn main() {
 
     let mut selected_program = 0;
 
-    let programs_max = (WINDOW_HEIGHT / FONT_SIZE) as usize;
+    let programs_max = ((WINDOW_HEIGHT / FONT_SIZE) - 2) as usize;
 
+    #[cfg(debug_assertions)]
     let fps_x = 550 - FONT_SIZE * 2;
+    #[cfg(debug_assertions)]
     let fps_y = 800 - FONT_SIZE * 2;
 
+    let mut programs_current_showing = current_programs.len().min(programs_max);
+
     unsafe {
-        while !rl.window_should_close() {
+        'runner: while !rl.window_should_close() {
             let pressed_key = rl.get_key_pressed();
-            let mut d = rl.begin_drawing(&thread);
-
-            d.clear_background(Color::BLACK);
-
-            d.draw_rectangle(0, 0, 600, FONT_SIZE + 10, Color::LIGHTGRAY);
-            d.draw_text(&search_bar, 10, 5, FONT_SIZE, Color::BLACK);
-
-            for (i, program) in current_programs.iter().take(programs_max).enumerate() {
-                let y = (i as i32 * FONT_SIZE) + 50;
-
-                if i == selected_program {
-                    d.draw_rectangle(0, y, 600, FONT_SIZE, Color::LIGHTGRAY);
-                    d.draw_text(program, 10, y, FONT_SIZE, Color::BLACK);
-                } else {
-                    d.draw_text(program, 10, y, FONT_SIZE, Color::WHITE);
-                }
-            }
-
-            let mut key = GetCharPressed();
-
-            while key > 0 {
-                search_bar.push(char::from_u32(key as u32).unwrap());
-                key = GetCharPressed();
-            }
 
             match pressed_key {
                 Some(raylib::consts::KeyboardKey::KEY_BACKSPACE) => {
                     search_bar.pop();
                 }
                 Some(raylib::consts::KeyboardKey::KEY_ENTER) => {
-                    Command::new("bash")
+                    if Command::new("bash")
                         .args(["-c", &current_programs[selected_program]])
                         .spawn()
-                        .unwrap();
-
-                    break;
+                        .is_ok()
+                    {
+                        break 'runner;
+                    }
                 }
                 Some(raylib::consts::KeyboardKey::KEY_DOWN) => {
                     selected_program += 1;
-                    if selected_program >= current_programs.len() {
+                    if selected_program >= programs_current_showing {
                         selected_program = 0;
                     }
                 }
                 Some(raylib::consts::KeyboardKey::KEY_UP) => {
                     if selected_program == 0 {
-                        selected_program = current_programs.len().min(programs_max) - 1;
+                        selected_program = programs_current_showing - 1;
                     } else {
                         selected_program -= 1;
                     }
                 }
                 Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
-                    break;
+                    break 'runner;
                 }
-                _ => {}
+                _ => {
+                    let mut key = GetCharPressed();
+
+                    while key > 0 {
+                        search_bar.push(char::from_u32(key as u32).unwrap());
+                        key = GetCharPressed();
+                    }
+                }
             }
 
             current_programs = programs
@@ -97,8 +87,34 @@ pub fn main() {
                 .copied()
                 .collect();
 
+            programs_current_showing = current_programs.len().min(programs_max);
+
             if selected_program >= current_programs.len() && !current_programs.is_empty() {
                 selected_program = current_programs.len() - 1;
+            }
+
+            let mut d = rl.begin_drawing(&thread);
+
+            d.clear_background(Color::BLACK);
+
+            d.draw_rectangle(
+                0,
+                0,
+                WINDOW_WIDTH,
+                FONT_SIZE + FONT_SIZE / 2,
+                Color::LIGHTGRAY,
+            );
+            d.draw_text(&search_bar, 10, FONT_SIZE / 4, FONT_SIZE, Color::BLACK);
+
+            for (i, program) in current_programs.iter().take(programs_max).enumerate() {
+                let y = (i as i32 * FONT_SIZE) + FONT_SIZE * 2;
+
+                if i == selected_program {
+                    d.draw_rectangle(0, y, WINDOW_WIDTH, FONT_SIZE, Color::LIGHTGRAY);
+                    d.draw_text(program, 10, y, FONT_SIZE, Color::BLACK);
+                } else {
+                    d.draw_text(program, 10, y, FONT_SIZE, Color::WHITE);
+                }
             }
 
             #[cfg(debug_assertions)]
