@@ -1,8 +1,5 @@
-use raylib::{
-    ffi::{exit, CloseWindow, GetCharPressed},
-    prelude::*,
-};
-use std::{any::Any, char::from_u32, collections::HashSet, process::Command};
+use raylib::{ffi::GetCharPressed, prelude::*};
+use std::{collections::HashSet, process::Command};
 
 const FONT_SIZE: i32 = 30;
 
@@ -21,7 +18,7 @@ pub fn main() {
 
     let (mut rl, thread) = raylib::init().size(600, 800).title("Finsk").build();
 
-    let mut search_bar = String::from("Hello");
+    let mut search_bar = String::from("");
 
     let mut selected_program = 0;
 
@@ -63,7 +60,22 @@ pub fn main() {
                         .spawn()
                         .unwrap();
 
-                    exit(0);
+                    break;
+                }
+                Some(raylib::consts::KeyboardKey::KEY_DOWN) => {
+                    selected_program += 1;
+                    if selected_program >= current_programs.len() {
+                        selected_program = 0;
+                    }
+                }
+                Some(raylib::consts::KeyboardKey::KEY_UP) => {
+                    selected_program = selected_program.wrapping_sub(1);
+                    if selected_program >= current_programs.len() {
+                        selected_program = current_programs.len() - 1;
+                    }
+                }
+                Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
+                    break;
                 }
                 _ => {}
             }
@@ -73,6 +85,10 @@ pub fn main() {
                 .filter(|program| program.contains(&search_bar))
                 .copied()
                 .collect();
+
+            if selected_program >= current_programs.len() && !current_programs.is_empty() {
+                selected_program = current_programs.len() - 1;
+            }
         }
     }
 }
