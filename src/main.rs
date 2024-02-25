@@ -29,6 +29,9 @@ pub fn main() {
 
     let programs_max = (WINDOW_HEIGHT / FONT_SIZE) as usize;
 
+    let fps_x = 550 - FONT_SIZE * 2;
+    let fps_y = 800 - FONT_SIZE * 2;
+
     unsafe {
         while !rl.window_should_close() {
             let pressed_key = rl.get_key_pressed();
@@ -97,11 +100,8 @@ pub fn main() {
                 selected_program = current_programs.len() - 1;
             }
 
-            // Draw FPS on the bottom right
-            let x = 550 - FONT_SIZE * 2;
-            let y = 800 - FONT_SIZE * 2;
             #[cfg(debug_assertions)]
-            d.draw_fps(x, y);
+            d.draw_fps(fps_x, fps_y);
         }
     }
 }
