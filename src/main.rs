@@ -1,5 +1,9 @@
 use raylib::{ffi::GetCharPressed, prelude::*};
-use std::{collections::HashSet, process::Command};
+use std::{
+    collections::HashSet,
+    io,
+    process::{Child, Command},
+};
 
 #[derive(Default)]
 struct AppState {
@@ -8,10 +12,11 @@ struct AppState {
     height: i32,
     font_size: i32,
     programs: Vec<String>,
+    launcher_program: String,
 }
 
+/// Get all the programs in the system
 fn get_programs() -> Vec<String> {
-    // Get all the programs in the system
     let output = Command::new("bash")
         .args(["-c", "compgen -c"])
         .output()
@@ -29,6 +34,74 @@ fn get_programs() -> Vec<String> {
     programs.into_iter().collect()
 }
 
+/// Run a command for the launcher_program
+fn run_bash_command(state: &AppState, command: &str) -> io::Result<Child> {
+    Command::new(&state.launcher_program)
+        .args(["-c", command])
+        .spawn()
+}
+
+/// Draw the application list
+fn draw_application_list(
+    drawer: &mut RaylibDrawHandle<'_>,
+    state: &AppState,
+    programs: &[String],
+    max: usize,
+    selected_program: usize,
+    padding: i32,
+) {
+    for (idx, program) in programs.iter().take(max).enumerate() {
+        let y_padding = (idx as i32 * state.font_size) + state.font_size * 2;
+
+        if idx == selected_program {
+            // Draw the ligtgray background for the selected program
+            drawer.draw_rectangle(0, y_padding, state.width, state.font_size, Color::LIGHTGRAY);
+            // Draw the selected program in black
+            drawer.draw_text(program, padding, y_padding, state.font_size, Color::BLACK);
+        } else {
+            // Draw the program in white
+            drawer.draw_text(program, padding, y_padding, state.font_size, Color::WHITE);
+        }
+    }
+}
+
+/// Draw the interface
+fn draw_interface(
+    drawer: &mut RaylibDrawHandle<'_>,
+    state: &AppState,
+    search_bar: &str,
+    programs: &[String],
+    max: usize,
+    selected_program: usize,
+) {
+    // Clear the background
+    drawer.clear_background(Color::BLACK);
+
+    // Draw the search bar background
+    drawer.draw_rectangle(
+        0,
+        0,
+        state.width,
+        state.font_size + state.font_size / 2,
+        Color::LIGHTGRAY,
+    );
+
+    const TEXT_PADDING: i32 = 10;
+
+    // Draw the search bar
+    drawer.draw_text(
+        search_bar,
+        TEXT_PADDING,
+        state.font_size / 4,
+        state.font_size,
+        Color::BLACK,
+    );
+
+    // Draw the application list
+    draw_application_list(drawer, state, programs, max, selected_program, TEXT_PADDING);
+}
+
+/// The main launcher for the program
 fn launcher(state: AppState) {
     let mut current_programs = state.programs.clone();
 
@@ -61,11 +134,7 @@ fn launcher(state: AppState) {
                 search_bar.pop();
             }
             Some(raylib::consts::KeyboardKey::KEY_ENTER) => {
-                if Command::new("bash")
-                    .args(["-c", &current_programs[selected_program]])
-                    .spawn()
-                    .is_ok()
-                {
+                if run_bash_command(&state, &current_programs[selected_program]).is_ok() {
                     break 'runner;
                 }
             }
@@ -114,53 +183,14 @@ fn launcher(state: AppState) {
 
         let mut d = rl.begin_drawing(&thread);
 
-        d.clear_background(Color::BLACK);
-
-        // Draw the search bar background
-        d.draw_rectangle(
-            0,
-            0,
-            state.width,
-            state.font_size + state.font_size / 2,
-            Color::LIGHTGRAY,
-        );
-
-        const TEXT_PADDING: i32 = 10;
-
-        // Draw the search bar
-        d.draw_text(
+        draw_interface(
+            &mut d,
+            &state,
             &search_bar,
-            TEXT_PADDING,
-            state.font_size / 4,
-            state.font_size,
-            Color::BLACK,
+            &current_programs,
+            programs_max,
+            selected_program,
         );
-
-        for (idx, program) in current_programs.iter().take(programs_max).enumerate() {
-            let y_padding = (idx as i32 * state.font_size) + state.font_size * 2;
-
-            if idx == selected_program {
-                // Draw the ligtgray background for the selected program
-                d.draw_rectangle(0, y_padding, state.width, state.font_size, Color::LIGHTGRAY);
-                // Draw the selected program in black
-                d.draw_text(
-                    program,
-                    TEXT_PADDING,
-                    y_padding,
-                    state.font_size,
-                    Color::BLACK,
-                );
-            } else {
-                // Draw the program in white
-                d.draw_text(
-                    program,
-                    TEXT_PADDING,
-                    y_padding,
-                    state.font_size,
-                    Color::WHITE,
-                );
-            }
-        }
 
         #[cfg(debug_assertions)]
         // Draw the FPS in debug mode
@@ -181,6 +211,7 @@ pub fn main() {
         height: WINDOW_HEIGHT,
         font_size: FONT_SIZE,
         programs,
+        launcher_program: "bash".to_string(),
     };
 
     launcher(state);
