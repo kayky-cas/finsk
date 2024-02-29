@@ -47,20 +47,32 @@ fn draw_application_list(
     state: &AppState,
     programs: &[String],
     max: usize,
-    selected_program: usize,
-    padding: i32,
+    selected_idx: usize,
+    text_padding: i32,
 ) {
     for (idx, program) in programs.iter().take(max).enumerate() {
         let y_padding = (idx as i32 * state.font_size) + state.font_size * 2;
 
-        if idx == selected_program {
+        if idx == selected_idx {
             // Draw the ligtgray background for the selected program
             drawer.draw_rectangle(0, y_padding, state.width, state.font_size, Color::LIGHTGRAY);
             // Draw the selected program in black
-            drawer.draw_text(program, padding, y_padding, state.font_size, Color::BLACK);
+            drawer.draw_text(
+                program,
+                text_padding,
+                y_padding,
+                state.font_size,
+                Color::BLACK,
+            );
         } else {
             // Draw the program in white
-            drawer.draw_text(program, padding, y_padding, state.font_size, Color::WHITE);
+            drawer.draw_text(
+                program,
+                text_padding,
+                y_padding,
+                state.font_size,
+                Color::WHITE,
+            );
         }
     }
 }
@@ -72,7 +84,7 @@ fn draw_interface(
     search_bar: &str,
     programs: &[String],
     max: usize,
-    selected_program: usize,
+    selected_idx: usize,
 ) {
     // Clear the background
     drawer.clear_background(Color::BLACK);
@@ -98,7 +110,7 @@ fn draw_interface(
     );
 
     // Draw the application list
-    draw_application_list(drawer, state, programs, max, selected_program, TEXT_PADDING);
+    draw_application_list(drawer, state, programs, max, selected_idx, TEXT_PADDING);
 }
 
 /// The main launcher for the program
@@ -112,7 +124,7 @@ fn launcher(state: AppState) {
         .build();
 
     let mut search_bar = String::new();
-    let mut selected_program = 0;
+    let mut selected_idx = 0;
 
     // The maximum number of programs showing
     let programs_max = ((state.height / state.font_size) - 2) as usize;
@@ -134,21 +146,22 @@ fn launcher(state: AppState) {
                 search_bar.pop();
             }
             Some(raylib::consts::KeyboardKey::KEY_ENTER) => {
-                if run_bash_command(&state, &current_programs[selected_program]).is_ok() {
+                let selected_program = &current_programs[selected_idx];
+                if run_bash_command(&state, selected_program).is_ok() {
                     break 'runner;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_DOWN) => {
-                selected_program += 1;
-                if selected_program >= programs_current_showing {
-                    selected_program = 0;
+                selected_idx += 1;
+                if selected_idx >= programs_current_showing {
+                    selected_idx = 0;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_UP) => {
-                if selected_program == 0 {
-                    selected_program = programs_current_showing - 1;
+                if selected_idx == 0 {
+                    selected_idx = programs_current_showing - 1;
                 } else {
-                    selected_program -= 1;
+                    selected_idx -= 1;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
@@ -177,8 +190,8 @@ fn launcher(state: AppState) {
 
         // If the selected program is greater than the number of programs showing,
         // set it to the last program
-        if selected_program >= current_programs.len() && !current_programs.is_empty() {
-            selected_program = current_programs.len() - 1;
+        if selected_idx >= current_programs.len() && !current_programs.is_empty() {
+            selected_idx = current_programs.len() - 1;
         }
 
         let mut d = rl.begin_drawing(&thread);
@@ -189,7 +202,7 @@ fn launcher(state: AppState) {
             &search_bar,
             &current_programs,
             programs_max,
-            selected_program,
+            selected_idx,
         );
 
         #[cfg(debug_assertions)]
