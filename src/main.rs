@@ -1,11 +1,16 @@
 use raylib::{ffi::GetCharPressed, prelude::*};
 use std::{collections::HashSet, process::Command};
 
-const FONT_SIZE: i32 = 30;
-const WINDOW_WIDTH: i32 = 600;
-const WINDOW_HEIGHT: i32 = 800;
+#[derive(Default)]
+struct AppState {
+    title: String,
+    width: i32,
+    height: i32,
+    font_size: i32,
+}
 
-pub fn main() {
+fn get_programs() -> Vec<String> {
+    // Get all the programs in the system
     let output = Command::new("bash")
         .args(["-c", "compgen -c"])
         .output()
@@ -14,31 +19,38 @@ pub fn main() {
 
     let bindings = String::from_utf8(output).unwrap();
 
-    let programs: Vec<&str> = bindings
+    // Split the programs by newline and remove duplicates
+    let programs: HashSet<String> = bindings
         .lines()
-        .collect::<HashSet<&str>>()
-        .into_iter()
+        .map(|program| program.to_string())
         .collect();
+
+    programs.into_iter().collect()
+}
+
+fn launcher(state: AppState) {
+    let programs = get_programs();
 
     let mut current_programs = programs.clone();
 
     let (mut rl, thread) = raylib::init()
-        .size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .size(state.width, state.height)
         .vsync()
-        .title("Finsk")
+        .title(&state.title)
         .build();
 
     let mut search_bar = String::new();
 
     let mut selected_program = 0;
 
-    let programs_max = ((WINDOW_HEIGHT / FONT_SIZE) - 2) as usize;
+    let programs_max = ((state.height / state.font_size) - 2) as usize;
     let mut programs_current_showing = current_programs.len().min(programs_max);
 
+    // The x and y coordinates for the FPS
     #[cfg(debug_assertions)]
-    let fps_x = WINDOW_WIDTH - 50 - FONT_SIZE * 2;
+    let fps_x = state.width - 50 - state.font_size * 2;
     #[cfg(debug_assertions)]
-    let fps_y = WINDOW_HEIGHT - FONT_SIZE * 2;
+    let fps_y = state.width - state.font_size * 2;
 
     'runner: while !rl.window_should_close() {
         let pressed_key = rl.get_key_pressed();
@@ -82,14 +94,18 @@ pub fn main() {
             },
         }
 
+        // Filter the programs based on the search bar
         current_programs = programs
             .iter()
             .filter(|program| program.contains(&search_bar))
-            .copied()
+            .cloned()
             .collect();
 
+        // Update the number of programs showing
         programs_current_showing = current_programs.len().min(programs_max);
 
+        // If the selected program is greater than the number of programs showing,
+        // set it to the last program
         if selected_program >= current_programs.len() && !current_programs.is_empty() {
             selected_program = current_programs.len() - 1;
         }
@@ -98,27 +114,69 @@ pub fn main() {
 
         d.clear_background(Color::BLACK);
 
+        // Draw the search bar background
         d.draw_rectangle(
             0,
             0,
-            WINDOW_WIDTH,
-            FONT_SIZE + FONT_SIZE / 2,
+            state.width,
+            state.font_size + state.font_size / 2,
             Color::LIGHTGRAY,
         );
-        d.draw_text(&search_bar, 10, FONT_SIZE / 4, FONT_SIZE, Color::BLACK);
 
-        for (i, program) in current_programs.iter().take(programs_max).enumerate() {
-            let y = (i as i32 * FONT_SIZE) + FONT_SIZE * 2;
+        const TEXT_PADDING: i32 = 10;
 
-            if i == selected_program {
-                d.draw_rectangle(0, y, WINDOW_WIDTH, FONT_SIZE, Color::LIGHTGRAY);
-                d.draw_text(program, 10, y, FONT_SIZE, Color::BLACK);
+        // Draw the search bar
+        d.draw_text(
+            &search_bar,
+            TEXT_PADDING,
+            state.font_size / 4,
+            state.font_size,
+            Color::BLACK,
+        );
+
+        for (idx, program) in current_programs.iter().take(programs_max).enumerate() {
+            let y_padding = (idx as i32 * state.font_size) + state.font_size * 2;
+
+            if idx == selected_program {
+                // Draw the ligtgray background for the selected program
+                d.draw_rectangle(0, y_padding, state.width, state.font_size, Color::LIGHTGRAY);
+                // Draw the selected program in black
+                d.draw_text(
+                    program,
+                    TEXT_PADDING,
+                    y_padding,
+                    state.font_size,
+                    Color::BLACK,
+                );
             } else {
-                d.draw_text(program, 10, y, FONT_SIZE, Color::WHITE);
+                // Draw the program in white
+                d.draw_text(
+                    program,
+                    TEXT_PADDING,
+                    y_padding,
+                    state.font_size,
+                    Color::WHITE,
+                );
             }
         }
 
         #[cfg(debug_assertions)]
+        // Draw the FPS in debug mode
         d.draw_fps(fps_x, fps_y);
     }
+}
+
+pub fn main() {
+    const FONT_SIZE: i32 = 30;
+    const WINDOW_WIDTH: i32 = 600;
+    const WINDOW_HEIGHT: i32 = 800;
+
+    let state = AppState {
+        title: "Finsk".to_string(),
+        width: WINDOW_WIDTH,
+        height: WINDOW_HEIGHT,
+        font_size: FONT_SIZE,
+    };
+
+    launcher(state);
 }
