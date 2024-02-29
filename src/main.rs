@@ -7,6 +7,7 @@ struct AppState {
     width: i32,
     height: i32,
     font_size: i32,
+    programs: Vec<String>,
 }
 
 fn get_programs() -> Vec<String> {
@@ -29,9 +30,7 @@ fn get_programs() -> Vec<String> {
 }
 
 fn launcher(state: AppState) {
-    let programs = get_programs();
-
-    let mut current_programs = programs.clone();
+    let mut current_programs = state.programs.clone();
 
     let (mut rl, thread) = raylib::init()
         .size(state.width, state.height)
@@ -97,7 +96,8 @@ fn launcher(state: AppState) {
         }
 
         // Filter the programs based on the search bar
-        current_programs = programs
+        current_programs = state
+            .programs
             .iter()
             .filter(|program| program.contains(&search_bar))
             .cloned()
@@ -173,11 +173,14 @@ pub fn main() {
     const WINDOW_WIDTH: i32 = 600;
     const WINDOW_HEIGHT: i32 = 800;
 
+    let programs = get_programs();
+
     let state = AppState {
         title: "Finsk".to_string(),
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         font_size: FONT_SIZE,
+        programs,
     };
 
     launcher(state);
