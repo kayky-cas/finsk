@@ -40,10 +40,12 @@ fn launcher(state: AppState) {
         .build();
 
     let mut search_bar = String::new();
-
     let mut selected_program = 0;
 
+    // The maximum number of programs showing
     let programs_max = ((state.height / state.font_size) - 2) as usize;
+
+    // The number of programs showing
     let mut programs_current_showing = current_programs.len().min(programs_max);
 
     // The x and y coordinates for the FPS
