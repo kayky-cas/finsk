@@ -128,12 +128,10 @@ impl App {
             Color::LIGHTGRAY,
         );
 
-        const TEXT_PADDING: i32 = 10;
-
         // Draw the search bar
         drawer.draw_text(
             &self.search_bar,
-            TEXT_PADDING,
+            Self::TEXT_PADDING,
             self.config.font_size / 4,
             self.config.font_size,
             Color::BLACK,
@@ -144,7 +142,7 @@ impl App {
     }
 
     /// The main launcher for the program
-    fn launcher(&mut self) {
+    fn run(&mut self) {
         let (mut rl, thread) = raylib::init()
             .size(self.config.width, self.config.height)
             .vsync()
@@ -255,5 +253,5 @@ pub fn main() {
     };
 
     let mut app = App::new(config);
-    app.launcher();
+    app.run();
 }
