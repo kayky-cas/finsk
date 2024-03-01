@@ -5,8 +5,38 @@ use std::{
     process::{Child, Command},
 };
 
+struct Application;
+
+impl Application {
+    /// Get all the programs in the system
+    fn get_programs() -> Vec<String> {
+        let output = Command::new("bash")
+            .args(["-c", "compgen -c"])
+            .output()
+            .unwrap()
+            .stdout;
+
+        let bindings = String::from_utf8(output).unwrap();
+
+        // Split the programs by newline and remove duplicates
+        let programs: HashSet<String> = bindings
+            .lines()
+            .map(|program| program.to_string())
+            .collect();
+
+        programs.into_iter().collect()
+    }
+
+    /// Run a command for the launcher_program
+    fn run_bash_command(state: &AppConfig, command: &str) -> io::Result<Child> {
+        Command::new(&state.launcher_program)
+            .args(["-c", command])
+            .spawn()
+    }
+}
+
 #[derive(Default)]
-struct AppState {
+struct AppConfig {
     title: String,
     width: i32,
     height: i32,
@@ -15,199 +45,196 @@ struct AppState {
     launcher_program: String,
 }
 
-/// Get all the programs in the system
-fn get_programs() -> Vec<String> {
-    let output = Command::new("bash")
-        .args(["-c", "compgen -c"])
-        .output()
-        .unwrap()
-        .stdout;
-
-    let bindings = String::from_utf8(output).unwrap();
-
-    // Split the programs by newline and remove duplicates
-    let programs: HashSet<String> = bindings
-        .lines()
-        .map(|program| program.to_string())
-        .collect();
-
-    programs.into_iter().collect()
-}
-
-/// Run a command for the launcher_program
-fn run_bash_command(state: &AppState, command: &str) -> io::Result<Child> {
-    Command::new(&state.launcher_program)
-        .args(["-c", command])
-        .spawn()
-}
-
-/// Draw the application list
-fn draw_application_list(
-    drawer: &mut RaylibDrawHandle<'_>,
-    state: &AppState,
-    programs: &[String],
-    max: usize,
+struct App {
+    config: AppConfig,
     selected_idx: usize,
-    text_padding: i32,
-) {
-    for (idx, program) in programs.iter().take(max).enumerate() {
-        let y_padding = (idx as i32 * state.font_size) + state.font_size * 2;
-
-        if idx == selected_idx {
-            // Draw the ligtgray background for the selected program
-            drawer.draw_rectangle(0, y_padding, state.width, state.font_size, Color::LIGHTGRAY);
-            // Draw the selected program in black
-            drawer.draw_text(
-                program,
-                text_padding,
-                y_padding,
-                state.font_size,
-                Color::BLACK,
-            );
-        } else {
-            // Draw the program in white
-            drawer.draw_text(
-                program,
-                text_padding,
-                y_padding,
-                state.font_size,
-                Color::WHITE,
-            );
-        }
-    }
+    programs: Vec<String>,
+    max: usize,
+    search_bar: String,
+    programs_count: usize,
 }
 
-/// Draw the interface
-fn draw_interface(
-    drawer: &mut RaylibDrawHandle<'_>,
-    state: &AppState,
-    search_bar: &str,
-    programs: &[String],
-    max: usize,
-    selected_idx: usize,
-) {
-    // Clear the background
-    drawer.clear_background(Color::BLACK);
-
-    // Draw the search bar background
-    drawer.draw_rectangle(
-        0,
-        0,
-        state.width,
-        state.font_size + state.font_size / 2,
-        Color::LIGHTGRAY,
-    );
-
+impl App {
     const TEXT_PADDING: i32 = 10;
 
-    // Draw the search bar
-    drawer.draw_text(
-        search_bar,
-        TEXT_PADDING,
-        state.font_size / 4,
-        state.font_size,
-        Color::BLACK,
-    );
+    fn new(config: AppConfig) -> Self {
+        let programs = config.programs.clone();
 
-    // Draw the application list
-    draw_application_list(drawer, state, programs, max, selected_idx, TEXT_PADDING);
-}
+        let search_bar = String::new();
+        let selected_idx = 0;
 
-/// The main launcher for the program
-fn launcher(state: AppState) {
-    let mut current_programs = state.programs.clone();
+        // The maximum number of programs showing
+        let max = ((config.height / config.font_size) - 2) as usize;
 
-    let (mut rl, thread) = raylib::init()
-        .size(state.width, state.height)
-        .vsync()
-        .title(&state.title)
-        .build();
+        // The number of programs showing
+        let programs_count = programs.len().min(max);
 
-    let mut search_bar = String::new();
-    let mut selected_idx = 0;
+        Self {
+            config,
+            selected_idx,
+            programs,
+            programs_count,
+            max,
+            search_bar,
+        }
+    }
 
-    // The maximum number of programs showing
-    let programs_max = ((state.height / state.font_size) - 2) as usize;
+    /// Draw the application list
+    fn draw_application_list(&mut self, drawer: &mut RaylibDrawHandle<'_>) {
+        for (idx, program) in self.programs.iter().take(self.max).enumerate() {
+            let y_padding = (idx as i32 * self.config.font_size) + self.config.font_size * 2;
 
-    // The number of programs showing
-    let mut programs_current_showing = current_programs.len().min(programs_max);
+            if idx == self.selected_idx {
+                // Draw the ligtgray background for the selected program
+                drawer.draw_rectangle(
+                    0,
+                    y_padding,
+                    self.config.width,
+                    self.config.font_size,
+                    Color::LIGHTGRAY,
+                );
+                // Draw the selected program in black
+                drawer.draw_text(
+                    program,
+                    Self::TEXT_PADDING,
+                    y_padding,
+                    self.config.font_size,
+                    Color::BLACK,
+                );
+            } else {
+                // Draw the program in white
+                drawer.draw_text(
+                    program,
+                    Self::TEXT_PADDING,
+                    y_padding,
+                    self.config.font_size,
+                    Color::WHITE,
+                );
+            }
+        }
+    }
 
-    // The x and y coordinates for the FPS
-    #[cfg(debug_assertions)]
-    let fps_x = state.width - 50 - state.font_size * 2;
-    #[cfg(debug_assertions)]
-    let fps_y = state.width - state.font_size * 2;
+    /// Draw the interface
+    fn draw_interface(&mut self, drawer: &mut RaylibDrawHandle<'_>) {
+        // Clear the background
+        drawer.clear_background(Color::BLACK);
 
-    'runner: while !rl.window_should_close() {
-        let pressed_key = rl.get_key_pressed();
+        // Draw the search bar background
+        drawer.draw_rectangle(
+            0,
+            0,
+            self.config.width,
+            self.config.font_size + self.config.font_size / 2,
+            Color::LIGHTGRAY,
+        );
 
+        const TEXT_PADDING: i32 = 10;
+
+        // Draw the search bar
+        drawer.draw_text(
+            &self.search_bar,
+            TEXT_PADDING,
+            self.config.font_size / 4,
+            self.config.font_size,
+            Color::BLACK,
+        );
+
+        // Draw the application list
+        self.draw_application_list(drawer);
+    }
+
+    /// The main launcher for the program
+    fn launcher(&mut self) {
+        let (mut rl, thread) = raylib::init()
+            .size(self.config.width, self.config.height)
+            .vsync()
+            .title(&self.config.title)
+            .build();
+
+        // The x and y coordinates for the FPS
+        #[cfg(debug_assertions)]
+        let fps_x = self.config.width - 50 - self.config.font_size * 2;
+        #[cfg(debug_assertions)]
+        let fps_y = self.config.width - self.config.font_size * 2;
+
+        while !rl.window_should_close() {
+            let pressed_key = rl.get_key_pressed();
+
+            if self.handle_pressed_key(pressed_key) {
+                break;
+            }
+
+            self.update_programs();
+
+            // If the selected program is greater than the number of programs showing,
+            // set it to the last program
+            if self.selected_idx >= self.programs.len() && !self.programs.is_empty() {
+                self.selected_idx = self.programs.len() - 1;
+            }
+
+            let mut d = rl.begin_drawing(&thread);
+            self.draw_interface(&mut d);
+
+            #[cfg(debug_assertions)]
+            // Draw the FPS in debug mode
+            d.draw_fps(fps_x, fps_y);
+        }
+    }
+
+    fn update_programs(&mut self) {
+        // Filter the programs based on the search bar
+        self.programs = self
+            .config
+            .programs
+            .iter()
+            // TODO: implement some fuzy find algorithm
+            .filter(|program| program.contains(&self.search_bar))
+            .cloned()
+            .collect();
+
+        // Update the number of programs showing
+        self.programs_count = self.programs.len().min(self.max);
+    }
+
+    /// Handle the pressed key and return a true if the main loop have to stop
+    fn handle_pressed_key(&mut self, pressed_key: Option<KeyboardKey>) -> bool {
         match pressed_key {
             Some(raylib::consts::KeyboardKey::KEY_BACKSPACE) => {
-                search_bar.pop();
+                self.search_bar.pop();
             }
             Some(raylib::consts::KeyboardKey::KEY_ENTER) => {
-                let selected_program = &current_programs[selected_idx];
-                if run_bash_command(&state, selected_program).is_ok() {
-                    break 'runner;
+                let selected_program = &self.programs[self.selected_idx];
+                if Application::run_bash_command(&self.config, selected_program).is_ok() {
+                    return true;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_DOWN) => {
-                selected_idx += 1;
-                if selected_idx >= programs_current_showing {
-                    selected_idx = 0;
+                self.selected_idx += 1;
+                if self.selected_idx >= self.programs_count {
+                    self.selected_idx = 0;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_UP) => {
-                if selected_idx == 0 {
-                    selected_idx = programs_current_showing - 1;
+                if self.selected_idx == 0 {
+                    self.selected_idx = self.programs_count - 1;
                 } else {
-                    selected_idx -= 1;
+                    self.selected_idx -= 1;
                 }
             }
             Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
-                break 'runner;
+                return true;
             }
             _ => unsafe {
                 let mut key = GetCharPressed();
 
                 while key > 0 {
-                    search_bar.push(char::from_u32(key as u32).unwrap());
+                    self.search_bar.push(char::from_u32(key as u32).unwrap());
                     key = GetCharPressed();
                 }
             },
-        }
+        };
 
-        // Filter the programs based on the search bar
-        current_programs = state
-            .programs
-            .iter()
-            .filter(|program| program.contains(&search_bar))
-            .cloned()
-            .collect();
-
-        // Update the number of programs showing
-        programs_current_showing = current_programs.len().min(programs_max);
-
-        // If the selected program is greater than the number of programs showing,
-        // set it to the last program
-        if selected_idx >= current_programs.len() && !current_programs.is_empty() {
-            selected_idx = current_programs.len() - 1;
-        }
-
-        let mut d = rl.begin_drawing(&thread);
-
-        draw_interface(
-            &mut d,
-            &state,
-            &search_bar,
-            &current_programs,
-            programs_max,
-            selected_idx,
-        );
-
-        #[cfg(debug_assertions)]
-        // Draw the FPS in debug mode
-        d.draw_fps(fps_x, fps_y);
+        false
     }
 }
 
@@ -216,9 +243,9 @@ pub fn main() {
     const WINDOW_WIDTH: i32 = 600;
     const WINDOW_HEIGHT: i32 = 800;
 
-    let programs = get_programs();
+    let programs = Application::get_programs();
 
-    let state = AppState {
+    let config = AppConfig {
         title: "Finsk".to_string(),
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
@@ -227,5 +254,6 @@ pub fn main() {
         launcher_program: "bash".to_string(),
     };
 
-    launcher(state);
+    let mut app = App::new(config);
+    app.launcher();
 }
