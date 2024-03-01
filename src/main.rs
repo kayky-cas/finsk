@@ -45,6 +45,11 @@ struct AppConfig {
     launcher_program: String,
 }
 
+struct Position {
+    x: i32,
+    y: i32,
+}
+
 struct App {
     config: AppConfig,
     selected_idx: usize,
@@ -82,35 +87,33 @@ impl App {
     /// Draw the application list
     fn draw_application_list(&mut self, drawer: &mut RaylibDrawHandle<'_>) {
         for (idx, program) in self.programs.iter().take(self.max).enumerate() {
-            let y_padding = (idx as i32 * self.config.font_size) + self.config.font_size * 2;
+            let text_position = Position {
+                x: Self::TEXT_PADDING,
+                y: (idx as i32 * self.config.font_size) + self.config.font_size * 2,
+            };
 
-            if idx == self.selected_idx {
+            let text_color = if idx == self.selected_idx {
                 // Draw the ligtgray background for the selected program
                 drawer.draw_rectangle(
-                    0,
-                    y_padding,
+                    0i32,
+                    text_position.y,
                     self.config.width,
                     self.config.font_size,
                     Color::LIGHTGRAY,
                 );
-                // Draw the selected program in black
-                drawer.draw_text(
-                    program,
-                    Self::TEXT_PADDING,
-                    y_padding,
-                    self.config.font_size,
-                    Color::BLACK,
-                );
+                Color::BLACK
             } else {
-                // Draw the program in white
-                drawer.draw_text(
-                    program,
-                    Self::TEXT_PADDING,
-                    y_padding,
-                    self.config.font_size,
-                    Color::WHITE,
-                );
-            }
+                Color::WHITE
+            };
+
+            // Draw the program in the text_color
+            drawer.draw_text(
+                program,
+                text_position.x,
+                text_position.y,
+                self.config.font_size,
+                text_color,
+            );
         }
     }
 
@@ -151,14 +154,15 @@ impl App {
 
         // The x and y coordinates for the FPS
         #[cfg(debug_assertions)]
-        let fps_x = self.config.width - 50 - self.config.font_size * 2;
-        #[cfg(debug_assertions)]
-        let fps_y = self.config.width - self.config.font_size * 2;
+        let fps_position = Position {
+            x: self.config.width - 50 - self.config.font_size * 2,
+            y: self.config.width - self.config.font_size * 2,
+        };
 
         while !rl.window_should_close() {
             let pressed_key = rl.get_key_pressed();
 
-            if self.handle_pressed_key(pressed_key) {
+            if self.stop_from_pressed_key(pressed_key) {
                 break;
             }
 
@@ -175,7 +179,7 @@ impl App {
 
             #[cfg(debug_assertions)]
             // Draw the FPS in debug mode
-            d.draw_fps(fps_x, fps_y);
+            d.draw_fps(fps_position.x, fps_position.y);
         }
     }
 
@@ -195,33 +199,34 @@ impl App {
     }
 
     /// Handle the pressed key and return a true if the main loop have to stop
-    fn handle_pressed_key(&mut self, pressed_key: Option<KeyboardKey>) -> bool {
+    fn stop_from_pressed_key(&mut self, pressed_key: Option<KeyboardKey>) -> bool {
         match pressed_key {
-            Some(raylib::consts::KeyboardKey::KEY_BACKSPACE) => {
+            Some(KeyboardKey::KEY_BACKSPACE) => {
                 self.search_bar.pop();
             }
-            Some(raylib::consts::KeyboardKey::KEY_ENTER) => {
+            Some(KeyboardKey::KEY_ENTER) => {
                 let selected_program = &self.programs[self.selected_idx];
                 if Application::run_bash_command(&self.config, selected_program).is_ok() {
                     return true;
                 }
             }
-            Some(raylib::consts::KeyboardKey::KEY_DOWN) => {
+            Some(KeyboardKey::KEY_DOWN) => {
                 self.selected_idx += 1;
                 if self.selected_idx >= self.programs_count {
                     self.selected_idx = 0;
                 }
             }
-            Some(raylib::consts::KeyboardKey::KEY_UP) => {
+            Some(KeyboardKey::KEY_UP) => {
                 if self.selected_idx == 0 {
                     self.selected_idx = self.programs_count - 1;
                 } else {
                     self.selected_idx -= 1;
                 }
             }
-            Some(raylib::consts::KeyboardKey::KEY_ESCAPE) => {
+            Some(KeyboardKey::KEY_ESCAPE) => {
                 return true;
             }
+            // Using unsafe because GetCharPressed is a C function
             _ => unsafe {
                 let mut key = GetCharPressed();
 
