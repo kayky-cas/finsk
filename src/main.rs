@@ -1,8 +1,13 @@
-use raylib::{ffi::GetCharPressed, prelude::*};
+use raylib::{
+    ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
+    prelude::*,
+};
 use std::{
     collections::HashSet,
+    ffi::CString,
     io,
     process::{Child, Command},
+    ptr::null_mut,
 };
 
 struct Application;
@@ -43,11 +48,21 @@ struct AppConfig {
     font_size: i32,
     programs: Vec<String>,
     launcher_program: String,
+    font_path: &'static [u8],
 }
 
 struct Position {
     x: i32,
     y: i32,
+}
+
+impl From<Position> for Vector2 {
+    fn from(val: Position) -> Self {
+        Vector2 {
+            x: val.x as f32,
+            y: val.y as f32,
+        }
+    }
 }
 
 struct App {
@@ -85,7 +100,7 @@ impl App {
     }
 
     /// Draw the application list
-    fn draw_application_list(&mut self, drawer: &mut RaylibDrawHandle<'_>) {
+    fn draw_application_list(&mut self, drawer: &mut RaylibDrawHandle<'_>, font: &Font) {
         for (idx, program) in self.programs.iter().take(self.max).enumerate() {
             let text_position = Position {
                 x: Self::TEXT_PADDING,
@@ -107,18 +122,19 @@ impl App {
             };
 
             // Draw the program in the text_color
-            drawer.draw_text(
+            drawer.draw_text_ex(
+                font,
                 program,
-                text_position.x,
-                text_position.y,
-                self.config.font_size,
+                text_position,
+                self.config.font_size as f32,
+                0.0f32,
                 text_color,
             );
         }
     }
 
     /// Draw the interface
-    fn draw_interface(&mut self, drawer: &mut RaylibDrawHandle<'_>) {
+    fn draw_interface(&mut self, drawer: &mut RaylibDrawHandle<'_>, font: &Font) {
         // Clear the background
         drawer.clear_background(Color::BLACK);
 
@@ -131,17 +147,23 @@ impl App {
             Color::LIGHTGRAY,
         );
 
+        let text_position = Position {
+            x: Self::TEXT_PADDING,
+            y: self.config.font_size / 4,
+        };
+
         // Draw the search bar
-        drawer.draw_text(
+        drawer.draw_text_ex(
+            font,
             &self.search_bar,
-            Self::TEXT_PADDING,
-            self.config.font_size / 4,
-            self.config.font_size,
+            text_position,
+            self.config.font_size as f32,
+            0.0f32,
             Color::BLACK,
         );
 
         // Draw the application list
-        self.draw_application_list(drawer);
+        self.draw_application_list(drawer, font);
     }
 
     /// The main launcher for the program
@@ -150,7 +172,10 @@ impl App {
             .size(self.config.width, self.config.height)
             .vsync()
             .title(&self.config.title)
+            .msaa_4x()
             .build();
+
+        let font = self.load_font();
 
         // The x and y coordinates for the FPS
         #[cfg(debug_assertions)]
@@ -175,7 +200,7 @@ impl App {
             }
 
             let mut d = rl.begin_drawing(&thread);
-            self.draw_interface(&mut d);
+            self.draw_interface(&mut d, &font);
 
             #[cfg(debug_assertions)]
             // Draw the FPS in debug mode
@@ -239,11 +264,31 @@ impl App {
 
         false
     }
+
+    fn load_font(&self) -> Font {
+        // I don't like this but ok
+
+        let font_data = self.config.font_path;
+        let font_size = self.config.font_path.len();
+        let font_ft = CString::new(".ttf").unwrap();
+        let chars = null_mut();
+
+        unsafe {
+            Font::from_raw(LoadFontFromMemory(
+                font_ft.as_ptr(),
+                font_data.as_ptr(),
+                font_size.try_into().unwrap(),
+                256,
+                chars,
+                100,
+            ))
+        }
+    }
 }
 
 pub fn main() {
-    const FONT_SIZE: i32 = 30;
-    const WINDOW_WIDTH: i32 = 600;
+    const FONT_SIZE: i32 = 32;
+    const WINDOW_WIDTH: i32 = 500;
     const WINDOW_HEIGHT: i32 = 800;
 
     let programs = Application::get_programs();
@@ -255,6 +300,7 @@ pub fn main() {
         font_size: FONT_SIZE,
         programs,
         launcher_program: "bash".to_string(),
+        font_path: include_bytes!("../resources/Roboto-Regular.ttf"),
     };
 
     let mut app = App::new(config);
