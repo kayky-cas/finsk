@@ -1,6 +1,6 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use raylib::{
-    ffi::{GetCharPressed, IsKeyDown, LoadFontFromMemory, Vector2},
+    ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
     prelude::*,
 };
 use std::{
