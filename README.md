@@ -9,5 +9,6 @@ make install
 
 ## TODO
 - [X] Creating a basic window opening searched apps
-- [ ] Create a fuzzy search algorithm
+- [X] Create a fuzzy search algorithm
+    - [ ] Implement my own algorithm
 - [X] (ish) Change the font

@@ -1,3 +1,4 @@
+use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use raylib::{
     ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
     prelude::*,
@@ -46,7 +47,7 @@ struct AppConfig {
     width: i32,
     height: i32,
     font_size: i32,
-    programs: Vec<String>,
+    programs: Vec<&'static str>,
     launcher_program: String,
     font_path: &'static [u8],
 }
@@ -68,7 +69,7 @@ impl From<Position> for Vector2 {
 struct App {
     config: AppConfig,
     selected_idx: usize,
-    programs: Vec<String>,
+    programs: Vec<&'static str>,
     max: usize,
     search_bar: String,
     programs_count: usize,
@@ -209,13 +210,23 @@ impl App {
     }
 
     fn update_programs(&mut self) {
+        let matcher = SkimMatcherV2::default();
+
         // Filter the programs based on the search bar
-        self.programs = self
+        let mut programs_filtered: Vec<_> = self
             .config
             .programs
             .iter()
-            // TODO: implement some fuzy find algorithm
-            .filter(|program| program.contains(&self.search_bar))
+            // TODO: Change that to my own algorithm
+            .map(|program| (program, matcher.fuzzy_match(program, &self.search_bar)))
+            .filter(|program| program.1.is_some())
+            .collect();
+
+        programs_filtered.sort_by(|(_, score_a), (_, score_b)| score_a.cmp(score_b));
+
+        self.programs = programs_filtered
+            .into_iter()
+            .map(|(p, _)| p)
             .cloned()
             .collect();
 
@@ -252,7 +263,7 @@ impl App {
                 return true;
             }
             // Using unsafe because GetCharPressed is a C function
-            _ => unsafe {
+            Some(_) => unsafe {
                 let mut key = GetCharPressed();
 
                 while key > 0 {
@@ -260,6 +271,7 @@ impl App {
                     key = GetCharPressed();
                 }
             },
+            _ => {}
         };
 
         false
@@ -278,7 +290,7 @@ impl App {
                 font_ft.as_ptr(),
                 font_data.as_ptr(),
                 font_size.try_into().unwrap(),
-                256,
+                self.config.font_size,
                 chars,
                 100,
             ))
@@ -291,7 +303,10 @@ pub fn main() {
     const WINDOW_WIDTH: i32 = 500;
     const WINDOW_HEIGHT: i32 = 800;
 
-    let programs = Application::get_programs();
+    let programs = Application::get_programs()
+        .iter()
+        .map(|p| p.clone().leak() as &'static str)
+        .collect();
 
     let config = AppConfig {
         title: "Finsk".to_string(),

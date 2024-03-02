@@ -12,3 +12,6 @@ debug: src/main.rs
 
 build: src/main.rs
 	cargo build --release
+
+clean:
+	cargo clean
