@@ -1,6 +1,6 @@
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use raylib::{
-    ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
+    ffi::{GetCharPressed, IsKeyDown, LoadFontFromMemory, Vector2},
     prelude::*,
 };
 use std::{
@@ -169,6 +169,8 @@ impl App {
 
     /// The main launcher for the program
     fn run(&mut self) {
+        let matcher = SkimMatcherV2::default();
+
         let (mut rl, thread) = raylib::init()
             .size(self.config.width, self.config.height)
             .vsync()
@@ -192,7 +194,7 @@ impl App {
                 break;
             }
 
-            self.update_programs();
+            self.update_programs(&matcher);
 
             // If the selected program is greater than the number of programs showing,
             // set it to the last program
@@ -209,9 +211,7 @@ impl App {
         }
     }
 
-    fn update_programs(&mut self) {
-        let matcher = SkimMatcherV2::default();
-
+    fn update_programs(&mut self, matcher: &dyn FuzzyMatcher) {
         // Filter the programs based on the search bar
         let mut programs_filtered: Vec<_> = self
             .config
