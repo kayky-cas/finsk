@@ -14,8 +14,8 @@ use std::{
 struct Application;
 
 impl Application {
-    /// Get all the programs in the system
-    fn get_programs() -> Vec<String> {
+    /// Get all the programs in the system (and leanking the strings... oops)
+    fn get_programs() -> Vec<&'static str> {
         let output = Command::new("bash")
             .args(["-c", "compgen -c"])
             .output()
@@ -30,7 +30,10 @@ impl Application {
             .map(|program| program.to_string())
             .collect();
 
-        programs.into_iter().collect()
+        programs
+            .into_iter()
+            .map(|program| program.leak() as &'static str)
+            .collect()
     }
 
     /// Run a command for the launcher_program
@@ -41,6 +44,32 @@ impl Application {
     }
 }
 
+/// Wrapper to the unsafe part of raylib
+struct Bridge;
+
+impl Bridge {
+    fn get_key_pressed() -> char {
+        let key = unsafe { GetCharPressed() as u32 };
+        char::from_u32(key).unwrap()
+    }
+
+    fn load_font_from_memory(font_data: &[u8], font_size: i32, font_file_type: &str) -> Font {
+        let font_ft = CString::new(font_file_type).unwrap();
+        unsafe {
+            Font::from_raw(LoadFontFromMemory(
+                font_ft.as_ptr(),
+                font_data.as_ptr(),
+                font_data.len().try_into().unwrap(),
+                font_size,
+                null_mut(),
+                100,
+            ))
+        }
+    }
+}
+
+/// A struct that defines the initial configuration of the app.
+/// The use of `i32` is because is raylib default's
 #[derive(Default)]
 struct AppConfig {
     title: String,
@@ -49,7 +78,8 @@ struct AppConfig {
     font_size: i32,
     programs: Vec<&'static str>,
     launcher_program: String,
-    font_path: &'static [u8],
+    font_data: &'static [u8],
+    font_file_type: &'static str,
 }
 
 struct Position {
@@ -178,7 +208,12 @@ impl App {
             .msaa_4x()
             .build();
 
-        let font = self.load_font();
+        // Load font from memory
+        let font = Bridge::load_font_from_memory(
+            self.config.font_data,
+            self.config.font_size,
+            self.config.font_file_type,
+        );
 
         // The x and y coordinates for the FPS
         #[cfg(debug_assertions)]
@@ -262,39 +297,18 @@ impl App {
             Some(KeyboardKey::KEY_ESCAPE) => {
                 return true;
             }
-            // Using unsafe because GetCharPressed is a C function
-            Some(_) => unsafe {
-                let mut key = GetCharPressed();
+            Some(_) => {
+                let mut ch = Bridge::get_key_pressed();
 
-                while key > 0 {
-                    self.search_bar.push(char::from_u32(key as u32).unwrap());
-                    key = GetCharPressed();
+                while ch > '\0' {
+                    self.search_bar.push(ch);
+                    ch = Bridge::get_key_pressed();
                 }
-            },
+            }
             _ => {}
         };
 
         false
-    }
-
-    fn load_font(&self) -> Font {
-        // I don't like this but ok
-
-        let font_data = self.config.font_path;
-        let font_size = self.config.font_path.len();
-        let font_ft = CString::new(".ttf").unwrap();
-        let chars = null_mut();
-
-        unsafe {
-            Font::from_raw(LoadFontFromMemory(
-                font_ft.as_ptr(),
-                font_data.as_ptr(),
-                font_size.try_into().unwrap(),
-                self.config.font_size,
-                chars,
-                100,
-            ))
-        }
     }
 }
 
@@ -303,19 +317,15 @@ pub fn main() {
     const WINDOW_WIDTH: i32 = 500;
     const WINDOW_HEIGHT: i32 = 800;
 
-    let programs = Application::get_programs()
-        .iter()
-        .map(|p| p.clone().leak() as &'static str)
-        .collect();
-
     let config = AppConfig {
         title: "Finsk".to_string(),
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         font_size: FONT_SIZE,
-        programs,
-        launcher_program: "bash".to_string(),
-        font_path: include_bytes!("../resources/Roboto-Regular.ttf"),
+        programs: Application::get_programs(),
+        launcher_program: "zsh".to_string(),
+        font_data: include_bytes!("../resources/JetBrainsMonoNLNerdFontMono-Regular.ttf"),
+        font_file_type: ".ttf",
     };
 
     let mut app = App::new(config);
