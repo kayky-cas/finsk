@@ -248,22 +248,21 @@ impl App {
 
     fn update_programs(&mut self, matcher: &dyn FuzzyMatcher) {
         // Filter the programs based on the search bar
-        let mut programs_filtered: Vec<_> = self
+        let mut programs_filtered: Vec<&'static str> = self
             .config
             .programs
             .iter()
             // TODO: Change that to my own algorithm
-            .map(|program| (program, matcher.fuzzy_match(program, &self.search_bar)))
-            .filter(|program| program.1.is_some())
+            .flat_map(|&program| {
+                matcher
+                    .fuzzy_match(program, &self.search_bar)
+                    .map(|_| program)
+            })
             .collect();
 
-        programs_filtered.sort_by(|(_, score_a), (_, score_b)| score_a.cmp(score_b));
+        programs_filtered.sort_by_key(|program| program.len());
 
-        self.programs = programs_filtered
-            .into_iter()
-            .map(|(p, _)| p)
-            .cloned()
-            .collect();
+        self.programs = programs_filtered;
 
         // Update the number of programs showing
         self.programs_count = self.programs.len().min(self.max);
