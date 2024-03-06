@@ -260,6 +260,7 @@ impl App {
             })
             .collect();
 
+        // Sort by the program's name length
         programs_filtered.sort_by_key(|program| program.len());
 
         self.programs = programs_filtered;
