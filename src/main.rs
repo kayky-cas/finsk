@@ -1,3 +1,4 @@
+use anyhow::{Context, Ok};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use raylib::{
     ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
@@ -6,7 +7,6 @@ use raylib::{
 use std::{
     collections::HashSet,
     ffi::CString,
-    io,
     process::{Child, Command},
     ptr::null_mut,
 };
@@ -15,14 +15,15 @@ struct Application;
 
 impl Application {
     /// Get all the programs in the system (and leanking the strings... oops)
-    fn get_programs() -> Vec<&'static str> {
+    fn get_programs() -> anyhow::Result<Vec<&'static str>> {
         let output = Command::new("bash")
             .args(["-c", "compgen -c"])
             .output()
-            .unwrap()
+            .context("running compgen")?
             .stdout;
 
-        let bindings = String::from_utf8(output).unwrap();
+        let bindings =
+            String::from_utf8(output).context("parsing stdout buffer to UTF-8 String")?;
 
         // Split the programs by newline and remove duplicates
         let programs: HashSet<String> = bindings
@@ -30,17 +31,18 @@ impl Application {
             .map(|program| program.to_string())
             .collect();
 
-        programs
+        Ok(programs
             .into_iter()
             .map(|program| program.leak() as &'static str)
-            .collect()
+            .collect())
     }
 
     /// Run a command for the launcher_program
-    fn run_bash_command(state: &AppConfig, command: &str) -> io::Result<Child> {
-        Command::new(&state.launcher_program)
+    fn run_bash_command(launcher_program: &str, command: &str) -> anyhow::Result<Child> {
+        Command::new(launcher_program)
             .args(["-c", command])
             .spawn()
+            .with_context(|| format!("spawn {} program", launcher_program))
     }
 }
 
@@ -50,16 +52,20 @@ struct Bridge;
 impl Bridge {
     fn get_key_pressed() -> char {
         let key = unsafe { GetCharPressed() as u32 };
-        char::from_u32(key).unwrap()
+        char::from_u32(key).expect("all keys returned by 'GetCharPressed' should be")
     }
 
     fn load_font_from_memory(font_data: &[u8], font_size: i32, font_file_type: &str) -> Font {
-        let font_ft = CString::new(font_file_type).unwrap();
+        let font_ft = CString::new(font_file_type)
+            .expect("the font file type has a \\0 character in the middle of the string");
         unsafe {
             Font::from_raw(LoadFontFromMemory(
                 font_ft.as_ptr(),
                 font_data.as_ptr(),
-                font_data.len().try_into().unwrap(),
+                font_data
+                    .len()
+                    .try_into()
+                    .expect("the font data length should fit in a 32 bit integer"),
                 font_size,
                 null_mut(),
                 100,
@@ -72,12 +78,12 @@ impl Bridge {
 /// The use of `i32` is because is raylib default's
 #[derive(Default)]
 struct AppConfig {
-    title: String,
+    title: &'static str,
     width: i32,
     height: i32,
     font_size: i32,
     programs: Vec<&'static str>,
-    launcher_program: String,
+    launcher_program: &'static str,
     font_data: &'static [u8],
     font_file_type: &'static str,
 }
@@ -102,7 +108,7 @@ struct App {
     programs: Vec<&'static str>,
     max: usize,
     search_bar: String,
-    programs_count: usize,
+    showing_programs: usize,
 }
 
 impl App {
@@ -124,7 +130,7 @@ impl App {
             config,
             selected_idx,
             programs,
-            programs_count,
+            showing_programs: programs_count,
             max,
             search_bar,
         }
@@ -198,13 +204,13 @@ impl App {
     }
 
     /// The main launcher for the program
-    fn run(&mut self) {
+    fn run(&mut self) -> anyhow::Result<()> {
         let matcher = SkimMatcherV2::default();
 
         let (mut rl, thread) = raylib::init()
             .size(self.config.width, self.config.height)
             .vsync()
-            .title(&self.config.title)
+            .title(self.config.title)
             .msaa_4x()
             .build();
 
@@ -244,11 +250,13 @@ impl App {
             // Draw the FPS in debug mode
             d.draw_fps(fps_position.x, fps_position.y);
         }
+
+        Ok(())
     }
 
     fn update_programs(&mut self, matcher: &dyn FuzzyMatcher) {
         // Filter the programs based on the search bar
-        let mut programs_filtered: Vec<&'static str> = self
+        self.programs = self
             .config
             .programs
             .iter()
@@ -261,41 +269,41 @@ impl App {
             .collect();
 
         // Sort by the program's name length
-        programs_filtered.sort_by_key(|program| program.len());
-
-        self.programs = programs_filtered;
+        self.programs.sort_by_key(|program| program.len());
 
         // Update the number of programs showing
-        self.programs_count = self.programs.len().min(self.max);
+        self.showing_programs = self.programs.len().min(self.max);
     }
 
     /// Handle the pressed key and return a true if the main loop have to stop
-    fn stop_from_pressed_key(&mut self, pressed_key: Option<KeyboardKey>) -> bool {
+    fn stop_from_pressed_key(&mut self, pressed_key: Option<KeyboardKey>) -> anyhow::Result<bool> {
         match pressed_key {
             Some(KeyboardKey::KEY_BACKSPACE) => {
                 self.search_bar.pop();
             }
             Some(KeyboardKey::KEY_ENTER) => {
                 let selected_program = &self.programs[self.selected_idx];
-                if Application::run_bash_command(&self.config, selected_program).is_ok() {
-                    return true;
+                if Application::run_bash_command(self.config.launcher_program, selected_program)
+                    .is_ok()
+                {
+                    return Ok(true);
                 }
             }
             Some(KeyboardKey::KEY_DOWN) => {
                 self.selected_idx += 1;
-                if self.selected_idx >= self.programs_count {
+                if self.selected_idx >= self.showing_programs {
                     self.selected_idx = 0;
                 }
             }
             Some(KeyboardKey::KEY_UP) => {
                 if self.selected_idx == 0 {
-                    self.selected_idx = self.programs_count - 1;
+                    self.selected_idx = self.showing_programs - 1;
                 } else {
                     self.selected_idx -= 1;
                 }
             }
             Some(KeyboardKey::KEY_ESCAPE) => {
-                return true;
+                return Ok(true);
             }
             Some(_) => {
                 let mut ch = Bridge::get_key_pressed();
@@ -308,26 +316,26 @@ impl App {
             _ => {}
         };
 
-        false
+        Ok(false)
     }
 }
 
-pub fn main() {
+pub fn main() -> anyhow::Result<()> {
     const FONT_SIZE: i32 = 32;
     const WINDOW_WIDTH: i32 = 500;
     const WINDOW_HEIGHT: i32 = 800;
 
     let config = AppConfig {
-        title: "Finsk".to_string(),
+        title: "Finsk",
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         font_size: FONT_SIZE,
-        programs: Application::get_programs(),
-        launcher_program: "zsh".to_string(),
+        programs: Application::get_programs()?,
+        launcher_program: "bash",
         font_data: include_bytes!("../resources/JetBrainsMonoNLNerdFontMono-Regular.ttf"),
         font_file_type: ".ttf",
     };
 
     let mut app = App::new(config);
-    app.run();
+    app.run()
 }
