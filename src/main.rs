@@ -231,7 +231,7 @@ impl App {
         while !rl.window_should_close() {
             let pressed_key = rl.get_key_pressed();
 
-            if self.stop_from_pressed_key(pressed_key) {
+            if self.stop_from_pressed_key(pressed_key)? {
                 break;
             }
 
