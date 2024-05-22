@@ -9,3 +9,8 @@ edition = "2021"
 anyhow = "1.0.81"
 fuzzy-matcher = "0.3.7"
 raylib = "3.7.0"
+slint = "1.6.0"
+
+
+[build-dependencies]
+slint-build = "1.6.0"
