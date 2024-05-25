@@ -1,3 +1,4 @@
+mod cursor;
 use anyhow::{Context, Ok};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use raylib::{
@@ -104,33 +105,26 @@ impl From<Position> for Vector2 {
 
 struct App {
     config: AppConfig,
-    selected_idx: usize,
-    programs: Vec<&'static str>,
+    programs: cursor::Cursor<&'static str>,
     max: usize,
     search_bar: String,
-    showing_programs: usize,
 }
 
 impl App {
+    const SEARCH_BAR_CAP: usize = 16;
     const TEXT_PADDING: i32 = 10;
 
     fn new(config: AppConfig) -> Self {
-        let programs = config.programs.clone();
-
-        let search_bar = String::new();
-        let selected_idx = 0;
+        let search_bar = String::with_capacity(Self::SEARCH_BAR_CAP);
 
         // The maximum number of programs showing
         let max = ((config.height / config.font_size) - 2) as usize;
 
-        // The number of programs showing
-        let programs_count = programs.len().min(max);
+        let programs = cursor::Cursor::from_iter(config.programs.iter().copied().take(max));
 
         Self {
             config,
-            selected_idx,
             programs,
-            showing_programs: programs_count,
             max,
             search_bar,
         }
@@ -138,13 +132,13 @@ impl App {
 
     /// Draw the application list
     fn draw_application_list(&mut self, drawer: &mut RaylibDrawHandle<'_>, font: &Font) {
-        for (idx, program) in self.programs.iter().take(self.max).enumerate() {
+        for (idx, program) in self.programs.as_slice().iter().enumerate() {
             let text_position = Position {
                 x: Self::TEXT_PADDING,
                 y: (idx as i32 * self.config.font_size) + self.config.font_size * 2,
             };
 
-            let text_color = if idx == self.selected_idx {
+            let text_color = if idx == self.programs.cursor() {
                 // Draw the ligtgray background for the selected program
                 drawer.draw_rectangle(
                     0i32,
@@ -237,12 +231,6 @@ impl App {
 
             self.update_programs(&matcher);
 
-            // If the selected program is greater than the number of programs showing,
-            // set it to the last program
-            if self.selected_idx >= self.programs.len() && !self.programs.is_empty() {
-                self.selected_idx = self.programs.len() - 1;
-            }
-
             let mut d = rl.begin_drawing(&thread);
             self.draw_interface(&mut d, &font);
 
@@ -256,23 +244,23 @@ impl App {
 
     fn update_programs(&mut self, matcher: &dyn FuzzyMatcher) {
         // Filter the programs based on the search bar
-        self.programs = self
-            .config
-            .programs
-            .iter()
-            // TODO: Change that to my own algorithm
-            .flat_map(|&program| {
-                matcher
-                    .fuzzy_match(program, &self.search_bar)
-                    .map(|_| program)
-            })
-            .collect();
+        self.programs.substitute(
+            self.config
+                .programs
+                .iter()
+                // TODO: Change that to my own algorithm
+                .flat_map(|&program| {
+                    matcher
+                        .fuzzy_match(program, &self.search_bar)
+                        .map(|_| program)
+                })
+                .take(self.max),
+        );
 
         // Sort by the program's name length
-        self.programs.sort_by_key(|program| program.len());
-
-        // Update the number of programs showing
-        self.showing_programs = self.programs.len().min(self.max);
+        self.programs
+            .as_mut_slice()
+            .sort_by_key(|program| program.len());
     }
 
     /// Handle the pressed key and return a true if the main loop have to stop
@@ -282,26 +270,15 @@ impl App {
                 self.search_bar.pop();
             }
             Some(KeyboardKey::KEY_ENTER) => {
-                let selected_program = &self.programs[self.selected_idx];
+                let selected_program = self.programs.at_cursor();
                 if Application::run_bash_command(self.config.launcher_program, selected_program)
                     .is_ok()
                 {
                     return Ok(true);
                 }
             }
-            Some(KeyboardKey::KEY_DOWN) => {
-                self.selected_idx += 1;
-                if self.selected_idx >= self.showing_programs {
-                    self.selected_idx = 0;
-                }
-            }
-            Some(KeyboardKey::KEY_UP) => {
-                if self.selected_idx == 0 {
-                    self.selected_idx = self.showing_programs - 1;
-                } else {
-                    self.selected_idx -= 1;
-                }
-            }
+            Some(KeyboardKey::KEY_DOWN) => self.programs.increase(),
+            Some(KeyboardKey::KEY_UP) => self.programs.decrease(),
             Some(KeyboardKey::KEY_ESCAPE) => {
                 return Ok(true);
             }
@@ -332,7 +309,7 @@ pub fn main() -> anyhow::Result<()> {
         font_size: FONT_SIZE,
         programs: Application::get_programs()?,
         launcher_program: "bash",
-        font_data: include_bytes!("../resources/JetBrainsMonoNLNerdFontMono-Regular.ttf"),
+        font_data: include_bytes!("../resources/JetBrainsMonoNerdFont-Medium.ttf"),
         font_file_type: ".ttf",
     };
 
