@@ -1,79 +1,12 @@
+mod application;
+mod bridge;
 mod cursor;
-use anyhow::{Context, Ok};
+mod position;
+use anyhow::Ok;
+use cursor::{Cursor, VecCursor};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
-use raylib::{
-    ffi::{GetCharPressed, LoadFontFromMemory, Vector2},
-    prelude::*,
-};
-use std::{
-    collections::HashSet,
-    ffi::CString,
-    process::{Child, Command},
-    ptr::null_mut,
-};
-
-struct Application;
-
-impl Application {
-    /// Get all the programs in the system (and leanking the strings... oops)
-    fn get_programs() -> anyhow::Result<Vec<&'static str>> {
-        let output = Command::new("bash")
-            .args(["-c", "compgen -c"])
-            .output()
-            .context("running compgen")?
-            .stdout;
-
-        let bindings =
-            String::from_utf8(output).context("parsing stdout buffer to UTF-8 String")?;
-
-        // Split the programs by newline and remove duplicates
-        let programs: HashSet<String> = bindings
-            .lines()
-            .map(|program| program.to_string())
-            .collect();
-
-        Ok(programs
-            .into_iter()
-            .map(|program| program.leak() as &'static str)
-            .collect())
-    }
-
-    /// Run a command for the launcher_program
-    fn run_bash_command(launcher_program: &str, command: &str) -> anyhow::Result<Child> {
-        Command::new(launcher_program)
-            .args(["-c", command])
-            .spawn()
-            .with_context(|| format!("spawn {} program", launcher_program))
-    }
-}
-
-/// Wrapper to the unsafe part of raylib
-struct Bridge;
-
-impl Bridge {
-    fn get_key_pressed() -> char {
-        let key = unsafe { GetCharPressed() as u32 };
-        char::from_u32(key).expect("all keys returned by 'GetCharPressed' should be")
-    }
-
-    fn load_font_from_memory(font_data: &[u8], font_size: i32, font_file_type: &str) -> Font {
-        let font_ft = CString::new(font_file_type)
-            .expect("the font file type has a \\0 character in the middle of the string");
-        unsafe {
-            Font::from_raw(LoadFontFromMemory(
-                font_ft.as_ptr(),
-                font_data.as_ptr(),
-                font_data
-                    .len()
-                    .try_into()
-                    .expect("the font data length should fit in a 32 bit integer"),
-                font_size,
-                null_mut(),
-                100,
-            ))
-        }
-    }
-}
+use position::Position;
+use raylib::prelude::*;
 
 /// A struct that defines the initial configuration of the app.
 /// The use of `i32` is because is raylib default's
@@ -89,23 +22,9 @@ struct AppConfig {
     font_file_type: &'static str,
 }
 
-struct Position {
-    x: i32,
-    y: i32,
-}
-
-impl From<Position> for Vector2 {
-    fn from(val: Position) -> Self {
-        Vector2 {
-            x: val.x as f32,
-            y: val.y as f32,
-        }
-    }
-}
-
 struct App {
     config: AppConfig,
-    programs: cursor::Cursor<&'static str>,
+    programs: VecCursor<&'static str>,
     max: usize,
     search_bar: String,
 }
@@ -120,7 +39,8 @@ impl App {
         // The maximum number of programs showing
         let max = ((config.height / config.font_size) - 2) as usize;
 
-        let programs = cursor::Cursor::from_iter(config.programs.iter().copied().take(max));
+        let programs_iter = config.programs.iter().copied().take(max);
+        let programs = VecCursor::from_iter(programs_iter);
 
         Self {
             config,
@@ -209,7 +129,7 @@ impl App {
             .build();
 
         // Load font from memory
-        let font = Bridge::load_font_from_memory(
+        let font = bridge::load_font_from_memory(
             self.config.font_data,
             self.config.font_size,
             self.config.font_file_type,
@@ -244,22 +164,23 @@ impl App {
 
     fn update_programs(&mut self, matcher: &dyn FuzzyMatcher) {
         // Filter the programs based on the search bar
-        self.programs.substitute(
-            self.config
-                .programs
-                .iter()
-                // TODO: Change that to my own algorithm
-                .flat_map(|&program| {
-                    matcher
-                        .fuzzy_match(program, &self.search_bar)
-                        .map(|_| program)
-                })
-                .take(self.max),
-        );
+        let filtered_programs = self
+            .config
+            .programs
+            .iter()
+            // TODO: Change that to my own algorithm
+            .flat_map(|&program| {
+                matcher
+                    .fuzzy_match(program, &self.search_bar)
+                    .map(|_| program)
+            })
+            .take(self.max);
+
+        self.programs.substitute(filtered_programs);
 
         // Sort by the program's name length
         self.programs
-            .as_mut_slice()
+            .as_slice_mut()
             .sort_by_key(|program| program.len());
     }
 
@@ -271,7 +192,7 @@ impl App {
             }
             Some(KeyboardKey::KEY_ENTER) => {
                 let selected_program = self.programs.at_cursor();
-                if Application::run_bash_command(self.config.launcher_program, selected_program)
+                if application::run_bash_command(self.config.launcher_program, selected_program)
                     .is_ok()
                 {
                     return Ok(true);
@@ -283,11 +204,11 @@ impl App {
                 return Ok(true);
             }
             Some(_) => {
-                let mut ch = Bridge::get_key_pressed();
+                let mut ch = bridge::get_key_pressed();
 
                 while ch > '\0' {
                     self.search_bar.push(ch);
-                    ch = Bridge::get_key_pressed();
+                    ch = bridge::get_key_pressed();
                 }
             }
             _ => {}
@@ -307,7 +228,7 @@ pub fn main() -> anyhow::Result<()> {
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         font_size: FONT_SIZE,
-        programs: Application::get_programs()?,
+        programs: application::get_programs()?,
         launcher_program: "bash",
         font_data: include_bytes!("../resources/JetBrainsMonoNerdFont-Medium.ttf"),
         font_file_type: ".ttf",
